@@ -39,7 +39,7 @@ export default function Home() {
       >
         {/* Entrar (login interno) */}
         <a
-          href="/app/login"
+          href="/app/login/"
           style={{
             backgroundColor: "#7c3aed",
             color: "white",
@@ -51,6 +51,22 @@ export default function Home() {
           }}
         >
           Entrar al Club
+        </a>
+
+        {/* Botón Aurora */}
+        <a
+          href="/aurora/"
+          style={{
+            backgroundColor: "#9333ea",
+            color: "white",
+            fontWeight: 800,
+            padding: "1rem 2rem",
+            borderRadius: "9999px",
+            textDecoration: "none",
+            display: "inline-block",
+          }}
+        >
+          Hablar con Aurora
         </a>
 
         {/* Stripe mensual */}
@@ -94,10 +110,5 @@ export default function Home() {
 
       <p style={{ marginTop: "1.5rem", opacity: 0.9 }}>
         ¿Aún no tienes cuenta?{" "}
-        <a href="/register" style={{ color: "white", fontWeight: 800, textDecoration: "underline" }}>
-          Regístrate aquí
-        </a>
-      </p>
-    </main>
-  );
-}
+        <a
+          href="
