@@ -9,9 +9,9 @@ export default function Home() {
       <p style={{ marginTop: '1rem', fontSize: '1.2rem', fontWeight: 'bold' }}>
         Precio: solo 39€/mes. ¡Únete y empieza a ganar!
       </p>
-      <button style={{ backgroundColor: '#7c3aed', color: 'white', fontWeight: 'bold', padding: '1rem 3rem', borderRadius: '9999px', fontSize: '1.25rem', border: 'none', cursor: 'pointer', marginTop: '2rem' }}>
+      <a href="/login" style={{ backgroundColor: '#7c3aed', color: 'white', fontWeight: 'bold', padding: '1rem 3rem', borderRadius: '9999px', fontSize: '1.25rem', border: 'none', cursor: 'pointer', textDecoration: 'none', display: 'inline-block', marginTop: '2rem' }}>
         Entrar al Club ahora
-      </button>
+      </a>
     </main>
   );
 }
