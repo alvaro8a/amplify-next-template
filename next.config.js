@@ -1,12 +1,9 @@
-/** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'export',
-  trailingSlash: true,
-  assetPrefix: '/',
   images: {
     unoptimized: true,
   },
-  experimental: {},
-};
+  trailingSlash: true,
+}
 
-module.exports = nextConfig;
+module.exports = nextConfig
