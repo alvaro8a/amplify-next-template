@@ -1,10 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export',  // ← Esto fuerza static export (soluciona 404 en rutas)
+  output: 'export',
   images: {
-    unoptimized: true,  // Necesario para static export
+    unoptimized: true,
   },
-  trailingSlash: true,  // Ayuda a rutas como /login/
+  trailingSlash: true,
+  assetPrefix: '.',
 };
 
 module.exports = nextConfig;
