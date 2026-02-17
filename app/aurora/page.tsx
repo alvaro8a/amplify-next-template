@@ -1,199 +1,299 @@
-"use strict";
+"use client";
 
-// ===== ENV =====
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
-const TTS_MODEL = process.env.TTS_MODEL || "gpt-4o-mini-tts";
-const TTS_VOICE = process.env.TTS_VOICE || "nova";
+import { useMemo, useRef, useState } from "react";
+import Link from "next/link";
 
-// Realtime model (ajustable)
-const REALTIME_MODEL =
-  process.env.REALTIME_MODEL || "gpt-4o-mini-realtime-preview";
+type Msg = { role: "user" | "assistant"; text: string };
 
-// ===== Helpers =====
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "content-type,authorization",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Cache-Control": "no-store",
-  };
-}
+// ✅ Tu Lambda base (SIN barra final)
+const LAMBDA_BASE =
+  "https://lpaaocstqbrsx23qspv222ippa0zlptl.lambda-url.eu-north-1.on.aws";
 
-function json(statusCode, obj) {
-  return {
-    statusCode,
-    headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders() },
-    body: JSON.stringify(obj),
-  };
-}
-
-// ===== OpenAI Calls =====
-async function openaiResponses(userText) {
-  const r = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
+export default function AuroraPage() {
+  // Chat normal
+  const [input, setInput] = useState("");
+  const [loadingChat, setLoadingChat] = useState(false);
+  const [msgs, setMsgs] = useState<Msg[]>([
+    {
+      role: "assistant",
+      text: "Hola Álvaro. Soy Aurora. Escríbeme o pulsa Voz (streaming) para hablar en tiempo real.",
     },
-    body: JSON.stringify({
-      model: OPENAI_MODEL,
-      input: [
-        { role: "user", content: [{ type: "input_text", text: userText }] },
-      ],
-    }),
-  });
+  ]);
 
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(`OpenAI /responses ${r.status}: ${JSON.stringify(data)}`);
+  const canSend = useMemo(
+    () => input.trim().length > 0 && !loadingChat,
+    [input, loadingChat]
+  );
 
-  const out =
-    data.output_text ??
-    (Array.isArray(data.output)
-      ? data.output
-          .flatMap((o) => o.content || [])
-          .filter((c) => c.type === "output_text" && typeof c.text === "string")
-          .map((c) => c.text)
-          .join("\n")
-      : "");
+  async function sendChat() {
+    const text = input.trim();
+    if (!text || loadingChat) return;
 
-  return out || "OK";
-}
+    setInput("");
+    setLoadingChat(true);
+    setMsgs((m) => [...m, { role: "user", text }]);
 
-async function openaiTTS(text) {
-  const r = await fetch("https://api.openai.com/v1/audio/speech", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: TTS_MODEL,
-      voice: TTS_VOICE,
-      input: text,
-      format: "mp3",
-    }),
-  });
-
-  if (!r.ok) {
-    const errTxt = await r.text().catch(() => "");
-    throw new Error(`OpenAI /audio/speech ${r.status}: ${errTxt}`);
-  }
-
-  const arrayBuf = await r.arrayBuffer();
-  return Buffer.from(arrayBuf).toString("base64");
-}
-
-async function openaiRealtimeCall(offerSdp) {
-  // Enviamos offer (SDP) a OpenAI y recibimos answer (SDP)
-  const r = await fetch("https://api.openai.com/v1/realtime/calls", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: REALTIME_MODEL,
-      offer: offerSdp,
-    }),
-  });
-
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    throw new Error(`OpenAI /realtime/calls ${r.status}: ${JSON.stringify(data)}`);
-  }
-
-  const answer = (data && (data.answer || data.sdp)) || "";
-  return String(answer || "").trim();
-}
-
-// ===== Handler =====
-exports.handler = async (event) => {
-  const method = (event.requestContext?.http?.method || event.httpMethod || "GET").toUpperCase();
-  const rawPath = event.requestContext?.http?.path || event.rawPath || event.path || "/";
-  const path = rawPath.split("?")[0];
-
-  // OPTIONS (CORS)
-  if (method === "OPTIONS") {
-    return { statusCode: 204, headers: corsHeaders(), body: "" };
-  }
-
-  const query = event.queryStringParameters || {};
-
-  // Root
-  if (path === "/" && method === "GET") {
-    return json(200, {
-      ok: true,
-      service: "quantum-nexus-aurora",
-      endpoints: [
-        "/health",
-        "/chat?msg=hola",
-        "/tts?text=Hola%20soy%20Aurora",
-        "/realtime/session (POST SDP)",
-      ],
-      models: { chat: OPENAI_MODEL, tts: TTS_MODEL, voice: TTS_VOICE, realtime: REALTIME_MODEL },
-      hasKey: Boolean(OPENAI_API_KEY),
-    });
-  }
-
-  // Health
-  if (path === "/health" && method === "GET") {
-    return json(200, { ok: true, status: "healthy" });
-  }
-
-  // Chat
-  if (path === "/chat" && method === "GET") {
     try {
-      const msg = String(query.msg || "").trim();
-      if (!msg) return json(400, { ok: false, error: "Falta query ?msg=" });
-      if (!OPENAI_API_KEY) return json(500, { ok: false, error: "OPENAI_API_KEY no configurada" });
-
-      const reply = await openaiResponses(msg);
-      return json(200, { ok: true, reply });
-    } catch (e) {
-      return json(500, { ok: false, error: "Error chat", details: String(e?.message || e) });
+      const r = await fetch(`${LAMBDA_BASE}/chat?msg=${encodeURIComponent(text)}`);
+      const data = await r.json();
+      if (!data?.ok) throw new Error(data?.error || "Chat error");
+      const reply = String(data.reply || "");
+      setMsgs((m) => [...m, { role: "assistant", text: reply }]);
+    } catch (e: any) {
+      setMsgs((m) => [
+        ...m,
+        { role: "assistant", text: `❌ Error chat: ${String(e?.message || e)}` },
+      ]);
+    } finally {
+      setLoadingChat(false);
     }
   }
 
-  // TTS
-  if (path === "/tts" && method === "GET") {
-    try {
-      const text = String(query.text || "").trim();
-      if (!text) return json(400, { ok: false, error: "Falta query ?text=" });
-      if (!OPENAI_API_KEY) return json(500, { ok: false, error: "OPENAI_API_KEY no configurada" });
+  // ====== VOZ STREAMING (WebRTC) ======
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-      const audioBase64 = await openaiTTS(text);
-      return json(200, { ok: true, format: "mp3", voice: TTS_VOICE, audioBase64 });
-    } catch (e) {
-      return json(500, { ok: false, error: "Error tts", details: String(e?.message || e) });
-    }
+  const [rtStatus, setRtStatus] = useState<
+    "idle" | "starting" | "live" | "stopping" | "error"
+  >("idle");
+  const [rtError, setRtError] = useState<string>("");
+
+  function safeStopTracks(stream: MediaStream | null) {
+    if (!stream) return;
+    for (const t of stream.getTracks()) t.stop();
   }
 
-  // ✅ Realtime WebRTC (POST /realtime/session) — body = SDP (texto), response = SDP (texto)
-  if (path === "/realtime/session" && method === "POST") {
+  async function startRealtimeVoice() {
+    if (rtStatus === "starting" || rtStatus === "live") return;
+
+    setRtError("");
+    setRtStatus("starting");
+
     try {
-      if (!OPENAI_API_KEY) return json(500, { ok: false, error: "OPENAI_API_KEY no configurada" });
+      // 1) Micro
+      const local = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStreamRef.current = local;
 
-      const offerSdp = event.isBase64Encoded
-        ? Buffer.from(event.body || "", "base64").toString("utf8")
-        : (event.body || "");
+      // 2) PeerConnection
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      });
+      pcRef.current = pc;
 
-      const cleanOffer = String(offerSdp || "").trim();
-      if (!cleanOffer) return json(400, { ok: false, error: "Offer SDP vacío (EOF). El frontend no está enviando offer.sdp" });
+      // 3) Remote audio
+      const remote = new MediaStream();
+      remoteStreamRef.current = remote;
 
-      const answerSdp = await openaiRealtimeCall(cleanOffer);
-      if (!answerSdp) return json(500, { ok: false, error: "OpenAI no devolvió SDP answer" });
-
-      return {
-        statusCode: 200,
-        headers: { "Content-Type": "application/sdp; charset=utf-8", ...corsHeaders() },
-        body: answerSdp,
+      pc.ontrack = (ev) => {
+        for (const track of ev.streams[0].getTracks()) {
+          remote.addTrack(track);
+        }
+        if (audioRef.current) {
+          audioRef.current.srcObject = remote;
+          // autoplay puede bloquearse; el click del botón ayuda
+          audioRef.current.play().catch(() => {});
+        }
       };
-    } catch (e) {
-      return json(500, { ok: false, error: "Error realtime", details: String(e?.message || e) });
+
+      // 4) Añadir micro al PC
+      for (const track of local.getTracks()) {
+        pc.addTrack(track, local);
+      }
+
+      // 5) Crear OFFER SDP
+      const offer = await pc.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: false,
+      });
+      await pc.setLocalDescription(offer);
+
+      const offerSdp = pc.localDescription?.sdp || "";
+      if (!offerSdp.trim()) throw new Error("Offer SDP vacío (frontend)");
+
+      // 6) Enviar SDP a tu Lambda → recibir ANSWER SDP
+      const resp = await fetch(`${LAMBDA_BASE}/realtime/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/sdp" },
+        body: offerSdp,
+      });
+
+      const answerSdp = await resp.text();
+      if (!resp.ok) {
+        throw new Error(`Lambda /realtime/session ${resp.status}: ${answerSdp}`);
+      }
+      if (!answerSdp.trim()) throw new Error("Answer SDP vacío (backend)");
+
+      // 7) Set remote description
+      await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+
+      setRtStatus("live");
+    } catch (e: any) {
+      setRtStatus("error");
+      setRtError(String(e?.message || e));
+      // limpieza
+      await stopRealtimeVoice();
     }
   }
 
-  // Unknown
-  return json(404, { ok: false, error: `Ruta no encontrada: ${method} ${path}` });
-};
+  async function stopRealtimeVoice() {
+    if (rtStatus === "stopping") return;
+    setRtStatus("stopping");
+
+    try {
+      if (pcRef.current) {
+        pcRef.current.ontrack = null;
+        pcRef.current.close();
+      }
+      pcRef.current = null;
+
+      safeStopTracks(localStreamRef.current);
+      localStreamRef.current = null;
+
+      if (audioRef.current) {
+        audioRef.current.pause();
+        // @ts-ignore
+        audioRef.current.srcObject = null;
+      }
+
+      remoteStreamRef.current = null;
+
+      setRtStatus("idle");
+    } catch {
+      setRtStatus("idle");
+    }
+  }
+
+  return (
+    <main
+      style={{
+        minHeight: "100vh",
+        background: "linear-gradient(to right, #6b46c1, #4c1d95)",
+        color: "white",
+        fontFamily: "Arial, sans-serif",
+        padding: 24,
+      }}
+    >
+      <div style={{ maxWidth: 980, margin: "0 auto" }}>
+        <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16 }}>
+          <h1 style={{ margin: 0 }}>Aurora</h1>
+          <Link
+            href="/"
+            style={{
+              marginLeft: "auto",
+              background: "rgba(255,255,255,0.12)",
+              padding: "10px 14px",
+              borderRadius: 10,
+              color: "white",
+              textDecoration: "none",
+            }}
+          >
+            Volver a Home
+          </Link>
+        </div>
+
+        {/* Chat box */}
+        <div
+          style={{
+            background: "rgba(255,255,255,0.08)",
+            borderRadius: 14,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {msgs.map((m, idx) => (
+              <div
+                key={idx}
+                style={{
+                  alignSelf: m.role === "user" ? "flex-end" : "flex-start",
+                  maxWidth: "80%",
+                  background: m.role === "user" ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.12)",
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {m.text}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Inputs */}
+        <div style={{ display: "flex", gap: 10, marginTop: 14, alignItems: "center" }}>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Escribe aquí..."
+            onKeyDown={(e) => {
+              if (e.key === "Enter") sendChat();
+            }}
+            style={{
+              flex: 1,
+              padding: 12,
+              borderRadius: 12,
+              border: "none",
+              outline: "none",
+            }}
+          />
+
+          <button
+            onClick={sendChat}
+            disabled={!canSend}
+            style={{
+              padding: "12px 16px",
+              borderRadius: 12,
+              border: "none",
+              background: canSend ? "rgba(0,0,0,0.35)" : "rgba(0,0,0,0.15)",
+              color: "white",
+              cursor: canSend ? "pointer" : "not-allowed",
+            }}
+          >
+            {loadingChat ? "..." : "Enviar"}
+          </button>
+
+          <button
+            onClick={rtStatus === "live" ? stopRealtimeVoice : startRealtimeVoice}
+            style={{
+              padding: "12px 16px",
+              borderRadius: 12,
+              border: "none",
+              background: rtStatus === "live" ? "rgba(0,0,0,0.45)" : "rgba(255,255,255,0.12)",
+              color: "white",
+              cursor: "pointer",
+              minWidth: 160,
+            }}
+          >
+            {rtStatus === "live"
+              ? "🛑 Parar voz"
+              : rtStatus === "starting"
+              ? "🎙️ Conectando..."
+              : "🎙️ Voz streaming"}
+          </button>
+        </div>
+
+        {/* Hidden audio output */}
+        <audio ref={audioRef} autoPlay />
+
+        {/* Status */}
+        <div style={{ marginTop: 10, opacity: 0.9, fontSize: 12, lineHeight: 1.4 }}>
+          Backend: {LAMBDA_BASE}
+          <br />
+          Voz:{" "}
+          {rtStatus === "idle"
+            ? "apagada"
+            : rtStatus === "starting"
+            ? "conectando..."
+            : rtStatus === "live"
+            ? "ACTIVA (deberías oír respuesta)"
+            : rtStatus === "stopping"
+            ? "parando..."
+            : "error"}
+          {rtError ? <div style={{ marginTop: 6 }}>❌ {rtError}</div> : null}
+        </div>
+      </div>
+    </main>
+  );
+}
