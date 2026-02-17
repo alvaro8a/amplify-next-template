@@ -1,55 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 
 type Msg = { role: "user" | "assistant"; text: string };
 
+// TU LAMBDA BASE (no cambies esto)
 const LAMBDA_BASE = "https://lpaaocstqbrsx23qspv222ippa0zlptl.lambda-url.eu-north-1.on.aws";
-
-const PERSONAS = [
-  { key: "female_es", label: "Aurora (Femenina)" },
-  { key: "male_es", label: "Masculina" },
-  { key: "neutral_es", label: "Neutra" },
-  { key: "young_es", label: "Juvenil" },
-  { key: "senior_es", label: "Más adulta" },
-];
-
-const VOICES = [
-  { key: "shimmer", label: "Shimmer" },
-  { key: "coral", label: "Coral" },
-  { key: "fable", label: "Fable" },
-  { key: "nova", label: "Nova" },
-  { key: "alloy", label: "Alloy" },
-  { key: "echo", label: "Echo" },
-  { key: "onyx", label: "Onyx" },
-];
 
 export default function AuroraChatPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [persona, setPersona] = useState("female_es");
-  const [voice, setVoice] = useState("shimmer");
+  const [ttsOn, setTtsOn] = useState(true);
 
   const [msgs, setMsgs] = useState<Msg[]>([
-    { role: "assistant", text: "Hola Álvaro. Soy Aurora. Estoy lista. Dime algo y te respondo." },
+    {
+      role: "assistant",
+      text: "Hola Álvaro. Soy Aurora. Estoy lista. Escríbeme y te respondo 🤍",
+    },
   ]);
-
-  useEffect(() => {
-    try {
-      const p = localStorage.getItem("qnc_persona");
-      const v = localStorage.getItem("qnc_voice");
-      if (p) setPersona(p);
-      if (v) setVoice(v);
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("qnc_persona", persona);
-      localStorage.setItem("qnc_voice", voice);
-    } catch {}
-  }, [persona, voice]);
 
   const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
 
@@ -62,12 +31,16 @@ export default function AuroraChatPage() {
     setMsgs((m) => [...m, { role: "user", text }]);
 
     try {
-      const url = `${LAMBDA_BASE}/chat?msg=${encodeURIComponent(text)}&persona=${encodeURIComponent(persona)}`;
-      const r = await fetch(url);
+      const r = await fetch(`${LAMBDA_BASE}/chat?msg=${encodeURIComponent(text)}`);
       const data = await r.json();
-      if (!data?.ok) throw new Error(data?.details || data?.error || "Chat error");
 
-      setMsgs((m) => [...m, { role: "assistant", text: String(data.reply || "") }]);
+      if (!data?.ok) throw new Error(data?.error || "Chat error");
+      const reply = String(data.reply || "");
+      setMsgs((m) => [...m, { role: "assistant", text: reply }]);
+
+      if (ttsOn) {
+        await speakText(reply);
+      }
     } catch (e: any) {
       setMsgs((m) => [...m, { role: "assistant", text: `❌ Error: ${String(e?.message || e)}` }]);
     } finally {
@@ -75,21 +48,23 @@ export default function AuroraChatPage() {
     }
   }
 
-  async function speakLastAssistant() {
-    const last = [...msgs].reverse().find((m) => m.role === "assistant")?.text;
-    if (!last) return;
-
+  async function speakText(text: string) {
     try {
-      const url = `${LAMBDA_BASE}/tts?text=${encodeURIComponent(last)}&voice=${encodeURIComponent(voice)}`;
-      const r = await fetch(url);
+      const r = await fetch(`${LAMBDA_BASE}/tts?text=${encodeURIComponent(text)}`);
       const data = await r.json();
-      if (!data?.ok) throw new Error(data?.details || data?.error || "TTS error");
+      if (!data?.ok) throw new Error(data?.error || "TTS error");
 
       const audio = new Audio(`data:audio/mpeg;base64,${data.audioBase64}`);
       await audio.play();
     } catch (e: any) {
       alert(`Error TTS: ${String(e?.message || e)}`);
     }
+  }
+
+  async function speakLastAssistant() {
+    const last = [...msgs].reverse().find((m) => m.role === "assistant")?.text;
+    if (!last) return;
+    await speakText(last);
   }
 
   return (
@@ -102,57 +77,48 @@ export default function AuroraChatPage() {
         padding: 24,
       }}
     >
-      <div style={{ maxWidth: 980, margin: "0 auto" }}>
-        <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 10 }}>
+      <div style={{ maxWidth: 900, margin: "0 auto" }}>
+        <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16 }}>
           <h1 style={{ margin: 0 }}>Aurora</h1>
-          <Link
-            href="/"
-            style={{
-              marginLeft: "auto",
-              background: "rgba(255,255,255,0.12)",
-              padding: "10px 14px",
-              borderRadius: 10,
-              color: "white",
-              textDecoration: "none",
-            }}
-          >
-            Volver a Home
-          </Link>
-        </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <div style={{ fontSize: 12, opacity: 0.9 }}>Modo:</div>
-            <select
-              value={persona}
-              onChange={(e) => setPersona(e.target.value)}
-              style={{ padding: 8, borderRadius: 10, border: "none", outline: "none" }}
+          <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+            <button
+              onClick={() => setTtsOn((v) => !v)}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "none",
+                background: "rgba(255,255,255,0.12)",
+                color: "white",
+                cursor: "pointer",
+              }}
             >
-              {PERSONAS.map((p) => (
-                <option key={p.key} value={p.key}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </div>
+              Voz: {ttsOn ? "encendida" : "apagada"}
+            </button>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <div style={{ fontSize: 12, opacity: 0.9 }}>Voz:</div>
-            <select
-              value={voice}
-              onChange={(e) => setVoice(e.target.value)}
-              style={{ padding: 8, borderRadius: 10, border: "none", outline: "none" }}
+            <Link
+              href="/"
+              style={{
+                background: "rgba(255,255,255,0.12)",
+                padding: "10px 14px",
+                borderRadius: 10,
+                color: "white",
+                textDecoration: "none",
+              }}
             >
-              {VOICES.map((v) => (
-                <option key={v.key} value={v.key}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
+              Volver a Home
+            </Link>
           </div>
         </div>
 
-        <div style={{ background: "rgba(255,255,255,0.08)", borderRadius: 14, padding: 16, minHeight: 420 }}>
+        <div
+          style={{
+            background: "rgba(255,255,255,0.08)",
+            borderRadius: 14,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {msgs.map((m, idx) => (
               <div
@@ -180,7 +146,13 @@ export default function AuroraChatPage() {
             onKeyDown={(e) => {
               if (e.key === "Enter") send();
             }}
-            style={{ flex: 1, padding: 12, borderRadius: 12, border: "none", outline: "none" }}
+            style={{
+              flex: 1,
+              padding: 12,
+              borderRadius: 12,
+              border: "none",
+              outline: "none",
+            }}
           />
 
           <button
@@ -209,11 +181,13 @@ export default function AuroraChatPage() {
               cursor: "pointer",
             }}
           >
-            🔊 Voz
+            🔊 Repetir
           </button>
         </div>
 
-        <div style={{ marginTop: 10, opacity: 0.85, fontSize: 12 }}>Backend: {LAMBDA_BASE}</div>
+        <div style={{ marginTop: 10, opacity: 0.85, fontSize: 12 }}>
+          Backend: {LAMBDA_BASE}
+        </div>
       </div>
     </main>
   );
