@@ -1,26 +1,45 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 type Msg = { role: "user" | "assistant"; text: string };
 
-// TU LAMBDA BASE (no cambies esto)
 const LAMBDA_BASE = "https://lpaaocstqbrsx23qspv222ippa0zlptl.lambda-url.eu-north-1.on.aws";
+const STORAGE_KEY = "qnc_aurora_msgs_v1";
 
 export default function AuroraChatPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [ttsOn, setTtsOn] = useState(true);
-
+  const [ttsOn, setTtsOn] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([
-    {
-      role: "assistant",
-      text: "Hola Álvaro. Soy Aurora. Estoy lista. Escríbeme y te respondo 🤍",
-    },
+    { role: "assistant", text: "Hola Álvaro. Soy Aurora. Estoy lista. ¿Qué hacemos ahora?" },
   ]);
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) setMsgs(parsed);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs.slice(-50)));
+    } catch {}
+  }, [msgs]);
+
   const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
+
+  async function speak(text: string) {
+    const r = await fetch(`${LAMBDA_BASE}/tts?text=${encodeURIComponent(text)}`);
+    const data = await r.json();
+    if (!data?.ok) throw new Error(data?.error || "TTS error");
+    const audio = new Audio(`data:audio/mpeg;base64,${data.audioBase64}`);
+    await audio.play();
+  }
 
   async function send() {
     const text = input.trim();
@@ -28,18 +47,28 @@ export default function AuroraChatPage() {
 
     setInput("");
     setLoading(true);
-    setMsgs((m) => [...m, { role: "user", text }]);
+
+    const nextMsgs: Msg[] = [...msgs, { role: "user", text }].slice(-20);
+    setMsgs(nextMsgs);
 
     try {
-      const r = await fetch(`${LAMBDA_BASE}/chat?msg=${encodeURIComponent(text)}`);
+      const r = await fetch(`${LAMBDA_BASE}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: nextMsgs }),
+      });
+
       const data = await r.json();
-
       if (!data?.ok) throw new Error(data?.error || "Chat error");
-      const reply = String(data.reply || "");
-      setMsgs((m) => [...m, { role: "assistant", text: reply }]);
 
-      if (ttsOn) {
-        await speakText(reply);
+      const reply = String(data.reply || "");
+      const updated: Msg[] = [...nextMsgs, { role: "assistant", text: reply }].slice(-50);
+      setMsgs(updated);
+
+      if (ttsOn && reply) {
+        try {
+          await speak(reply);
+        } catch {}
       }
     } catch (e: any) {
       setMsgs((m) => [...m, { role: "assistant", text: `❌ Error: ${String(e?.message || e)}` }]);
@@ -48,23 +77,19 @@ export default function AuroraChatPage() {
     }
   }
 
-  async function speakText(text: string) {
+  async function speakLastAssistant() {
+    const last = [...msgs].reverse().find((m) => m.role === "assistant")?.text;
+    if (!last) return;
     try {
-      const r = await fetch(`${LAMBDA_BASE}/tts?text=${encodeURIComponent(text)}`);
-      const data = await r.json();
-      if (!data?.ok) throw new Error(data?.error || "TTS error");
-
-      const audio = new Audio(`data:audio/mpeg;base64,${data.audioBase64}`);
-      await audio.play();
+      await speak(last);
     } catch (e: any) {
       alert(`Error TTS: ${String(e?.message || e)}`);
     }
   }
 
-  async function speakLastAssistant() {
-    const last = [...msgs].reverse().find((m) => m.role === "assistant")?.text;
-    if (!last) return;
-    await speakText(last);
+  function resetMemory() {
+    localStorage.removeItem(STORAGE_KEY);
+    setMsgs([{ role: "assistant", text: "Memoria borrada. Estoy lista de nuevo. ¿Qué hacemos?" }]);
   }
 
   return (
@@ -81,7 +106,7 @@ export default function AuroraChatPage() {
         <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16 }}>
           <h1 style={{ margin: 0 }}>Aurora</h1>
 
-          <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
             <button
               onClick={() => setTtsOn((v) => !v)}
               style={{
@@ -96,6 +121,34 @@ export default function AuroraChatPage() {
               Voz: {ttsOn ? "encendida" : "apagada"}
             </button>
 
+            <button
+              onClick={speakLastAssistant}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "none",
+                background: "rgba(255,255,255,0.12)",
+                color: "white",
+                cursor: "pointer",
+              }}
+            >
+              🔊 Repetir
+            </button>
+
+            <button
+              onClick={resetMemory}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "none",
+                background: "rgba(0,0,0,0.25)",
+                color: "white",
+                cursor: "pointer",
+              }}
+            >
+              🧠 Borrar memoria
+            </button>
+
             <Link
               href="/"
               style={{
@@ -106,7 +159,7 @@ export default function AuroraChatPage() {
                 textDecoration: "none",
               }}
             >
-              Volver a Home
+              Home
             </Link>
           </div>
         </div>
@@ -154,7 +207,6 @@ export default function AuroraChatPage() {
               outline: "none",
             }}
           />
-
           <button
             onClick={send}
             disabled={!canSend}
@@ -168,20 +220,6 @@ export default function AuroraChatPage() {
             }}
           >
             {loading ? "..." : "Enviar"}
-          </button>
-
-          <button
-            onClick={speakLastAssistant}
-            style={{
-              padding: "12px 16px",
-              borderRadius: 12,
-              border: "none",
-              background: "rgba(255,255,255,0.12)",
-              color: "white",
-              cursor: "pointer",
-            }}
-          >
-            🔊 Repetir
           </button>
         </div>
 
