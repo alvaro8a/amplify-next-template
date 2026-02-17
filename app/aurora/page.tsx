@@ -3,15 +3,34 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
-type Msg = { role: "user" | "assistant"; text: string };
+type Role = "user" | "assistant";
+type Msg = { role: Role; text: string };
 
 const LAMBDA_BASE = "https://lpaaocstqbrsx23qspv222ippa0zlptl.lambda-url.eu-north-1.on.aws";
 const STORAGE_KEY = "qnc_aurora_msgs_v1";
 
+function isRole(x: any): x is Role {
+  return x === "user" || x === "assistant";
+}
+
+function normalizeMsgs(input: any): Msg[] {
+  if (!Array.isArray(input)) return [];
+  const out: Msg[] = [];
+  for (const m of input) {
+    if (!m) continue;
+    const role = m.role;
+    const text = m.text;
+    if (isRole(role) && typeof text === "string") out.push({ role, text });
+  }
+  return out;
+}
+
 export default function AuroraChatPage() {
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [ttsOn, setTtsOn] = useState(false);
+  const [input, setInput] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(false);
+  const [ttsOn, setTtsOn] = useState<boolean>(false);
+
+  // 👇 IMPORTANTE: tipamos explícitamente el estado como Msg[]
   const [msgs, setMsgs] = useState<Msg[]>([
     { role: "assistant", text: "Hola Álvaro. Soy Aurora. Estoy lista. ¿Qué hacemos ahora?" },
   ]);
@@ -21,7 +40,8 @@ export default function AuroraChatPage() {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) setMsgs(parsed);
+      const normalized = normalizeMsgs(parsed);
+      if (normalized.length > 0) setMsgs(normalized.slice(-50));
     } catch {}
   }, []);
 
@@ -48,6 +68,7 @@ export default function AuroraChatPage() {
     setInput("");
     setLoading(true);
 
+    // 👇 Forzamos el tipo Msg aquí también
     const nextMsgs: Msg[] = [...msgs, { role: "user", text }].slice(-20);
     setMsgs(nextMsgs);
 
@@ -71,7 +92,8 @@ export default function AuroraChatPage() {
         } catch {}
       }
     } catch (e: any) {
-      setMsgs((m) => [...m, { role: "assistant", text: `❌ Error: ${String(e?.message || e)}` }]);
+      const err = `❌ Error: ${String(e?.message || e)}`;
+      setMsgs((m) => [...m, { role: "assistant", text: err }]);
     } finally {
       setLoading(false);
     }
@@ -88,7 +110,9 @@ export default function AuroraChatPage() {
   }
 
   function resetMemory() {
-    localStorage.removeItem(STORAGE_KEY);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {}
     setMsgs([{ role: "assistant", text: "Memoria borrada. Estoy lista de nuevo. ¿Qué hacemos?" }]);
   }
 
