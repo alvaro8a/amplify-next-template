@@ -6,7 +6,8 @@ import Link from "next/link";
 type Role = "user" | "assistant";
 type Msg = { role: Role; text: string };
 
-const LAMBDA_BASE = "https://lpaaocstqbrsx23qspv222ippa0zlptl.lambda-url.eu-north-1.on.aws";
+const LAMBDA_BASE =
+  "https://lpaaocstqbrsx23qspv222ippa0zlptl.lambda-url.eu-north-1.on.aws";
 const STORAGE_KEY = "qnc_aurora_msgs_v1";
 
 function isRole(x: any): x is Role {
@@ -18,8 +19,8 @@ function normalizeMsgs(input: any): Msg[] {
   const out: Msg[] = [];
   for (const m of input) {
     if (!m) continue;
-    const role = m.role;
-    const text = m.text;
+    const role = (m as any).role;
+    const text = (m as any).text;
     if (isRole(role) && typeof text === "string") out.push({ role, text });
   }
   return out;
@@ -30,33 +31,44 @@ export default function AuroraChatPage() {
   const [loading, setLoading] = useState<boolean>(false);
   const [ttsOn, setTtsOn] = useState<boolean>(false);
 
-  // 👇 IMPORTANTE: tipamos explícitamente el estado como Msg[]
-  const [msgs, setMsgs] = useState<Msg[]>([
-    { role: "assistant", text: "Hola Álvaro. Soy Aurora. Estoy lista. ¿Qué hacemos ahora?" },
-  ]);
+  // ✅ Clave: el estado queda SIEMPRE tipado como Msg[]
+  const [msgs, setMsgs] = useState<Msg[]>(
+    [
+      {
+        role: "assistant",
+        text: "Hola Álvaro. Soy Aurora. Estoy lista. ¿Qué hacemos ahora?",
+      },
+    ] as Msg[]
+  );
 
+  // Cargar memoria local (si existe)
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw);
-      const normalized = normalizeMsgs(parsed);
+      const normalized: Msg[] = normalizeMsgs(parsed);
       if (normalized.length > 0) setMsgs(normalized.slice(-50));
     } catch {}
   }, []);
 
+  // Guardar memoria local
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs.slice(-50)));
     } catch {}
   }, [msgs]);
 
-  const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
+  const canSend = useMemo(
+    () => input.trim().length > 0 && !loading,
+    [input, loading]
+  );
 
   async function speak(text: string) {
     const r = await fetch(`${LAMBDA_BASE}/tts?text=${encodeURIComponent(text)}`);
     const data = await r.json();
     if (!data?.ok) throw new Error(data?.error || "TTS error");
+
     const audio = new Audio(`data:audio/mpeg;base64,${data.audioBase64}`);
     await audio.play();
   }
@@ -68,23 +80,32 @@ export default function AuroraChatPage() {
     setInput("");
     setLoading(true);
 
-    // 👇 Forzamos el tipo Msg aquí también
-    const nextMsgs: Msg[] = [...msgs, { role: "user", text }].slice(-20);
-    setMsgs(nextMsgs);
+    // ✅ MUY IMPORTANTE: usamos setMsgs(prev => ...) para que prev sea Msg[] SIEMPRE
+    let payload: Msg[] = [];
+    setMsgs((prev) => {
+      const next: Msg[] = [...prev, { role: "user", text }].slice(-20);
+      payload = next;
+      return next;
+    });
 
     try {
       const r = await fetch(`${LAMBDA_BASE}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: nextMsgs }),
+        body: JSON.stringify({ messages: payload }),
       });
 
       const data = await r.json();
       if (!data?.ok) throw new Error(data?.error || "Chat error");
 
       const reply = String(data.reply || "");
-      const updated: Msg[] = [...nextMsgs, { role: "assistant", text: reply }].slice(-50);
-      setMsgs(updated);
+
+      setMsgs((prev) => {
+        const next: Msg[] = [...prev, { role: "assistant", text: reply }].slice(
+          -50
+        );
+        return next;
+      });
 
       if (ttsOn && reply) {
         try {
@@ -93,7 +114,7 @@ export default function AuroraChatPage() {
       }
     } catch (e: any) {
       const err = `❌ Error: ${String(e?.message || e)}`;
-      setMsgs((m) => [...m, { role: "assistant", text: err }]);
+      setMsgs((prev) => [...prev, { role: "assistant", text: err }]);
     } finally {
       setLoading(false);
     }
@@ -113,7 +134,12 @@ export default function AuroraChatPage() {
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {}
-    setMsgs([{ role: "assistant", text: "Memoria borrada. Estoy lista de nuevo. ¿Qué hacemos?" }]);
+    setMsgs([
+      {
+        role: "assistant",
+        text: "Memoria borrada. Estoy lista otra vez. ¿Qué hacemos?",
+      },
+    ]);
   }
 
   return (
