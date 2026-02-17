@@ -1,167 +1,96 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 type Msg = { role: "user" | "assistant"; text: string };
 
-// ✅ Tu Lambda base (SIN barra final)
-const LAMBDA_BASE =
-  "https://lpaaocstqbrsx23qspv222ippa0zlptl.lambda-url.eu-north-1.on.aws";
+const LAMBDA_BASE = "https://lpaaocstqbrsx23qspv222ippa0zlptl.lambda-url.eu-north-1.on.aws";
 
-export default function AuroraPage() {
-  // Chat normal
+const PERSONAS = [
+  { key: "female_es", label: "Femenina (Aurora)" },
+  { key: "male_es", label: "Masculina" },
+  { key: "neutral_es", label: "Neutra" },
+  { key: "young_es", label: "Juvenil" },
+  { key: "senior_es", label: "Más adulta" },
+];
+
+const VOICES = [
+  { key: "shimmer", label: "Shimmer" },
+  { key: "coral", label: "Coral" },
+  { key: "fable", label: "Fable" },
+  { key: "nova", label: "Nova" },
+  { key: "alloy", label: "Alloy" },
+  { key: "echo", label: "Echo" },
+  { key: "onyx", label: "Onyx" },
+];
+
+export default function AuroraChatPage() {
   const [input, setInput] = useState("");
-  const [loadingChat, setLoadingChat] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [persona, setPersona] = useState("female_es");
+  const [voice, setVoice] = useState("shimmer");
+
   const [msgs, setMsgs] = useState<Msg[]>([
-    {
-      role: "assistant",
-      text: "Hola Álvaro. Soy Aurora. Escríbeme o pulsa Voz (streaming) para hablar en tiempo real.",
-    },
+    { role: "assistant", text: "Hola Álvaro. Soy Aurora. Dime algo y te respondo con IA real." },
   ]);
 
-  const canSend = useMemo(
-    () => input.trim().length > 0 && !loadingChat,
-    [input, loadingChat]
-  );
+  useEffect(() => {
+    try {
+      const p = localStorage.getItem("qnc_persona");
+      const v = localStorage.getItem("qnc_voice");
+      if (p) setPersona(p);
+      if (v) setVoice(v);
+    } catch {}
+  }, []);
 
-  async function sendChat() {
+  useEffect(() => {
+    try {
+      localStorage.setItem("qnc_persona", persona);
+      localStorage.setItem("qnc_voice", voice);
+    } catch {}
+  }, [persona, voice]);
+
+  const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
+
+  async function send() {
     const text = input.trim();
-    if (!text || loadingChat) return;
+    if (!text || loading) return;
 
     setInput("");
-    setLoadingChat(true);
+    setLoading(true);
     setMsgs((m) => [...m, { role: "user", text }]);
 
     try {
-      const r = await fetch(`${LAMBDA_BASE}/chat?msg=${encodeURIComponent(text)}`);
+      const url = `${LAMBDA_BASE}/chat?msg=${encodeURIComponent(text)}&persona=${encodeURIComponent(persona)}`;
+      const r = await fetch(url);
       const data = await r.json();
+
       if (!data?.ok) throw new Error(data?.error || "Chat error");
+
       const reply = String(data.reply || "");
       setMsgs((m) => [...m, { role: "assistant", text: reply }]);
     } catch (e: any) {
-      setMsgs((m) => [
-        ...m,
-        { role: "assistant", text: `❌ Error chat: ${String(e?.message || e)}` },
-      ]);
+      setMsgs((m) => [...m, { role: "assistant", text: `❌ Error: ${String(e?.message || e)}` }]);
     } finally {
-      setLoadingChat(false);
+      setLoading(false);
     }
   }
 
-  // ====== VOZ STREAMING (WebRTC) ======
-  const pcRef = useRef<RTCPeerConnection | null>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
-  const remoteStreamRef = useRef<MediaStream | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  const [rtStatus, setRtStatus] = useState<
-    "idle" | "starting" | "live" | "stopping" | "error"
-  >("idle");
-  const [rtError, setRtError] = useState<string>("");
-
-  function safeStopTracks(stream: MediaStream | null) {
-    if (!stream) return;
-    for (const t of stream.getTracks()) t.stop();
-  }
-
-  async function startRealtimeVoice() {
-    if (rtStatus === "starting" || rtStatus === "live") return;
-
-    setRtError("");
-    setRtStatus("starting");
+  async function speakLastAssistant() {
+    const last = [...msgs].reverse().find((m) => m.role === "assistant")?.text;
+    if (!last) return;
 
     try {
-      // 1) Micro
-      const local = await navigator.mediaDevices.getUserMedia({ audio: true });
-      localStreamRef.current = local;
+      const url = `${LAMBDA_BASE}/tts?text=${encodeURIComponent(last)}&voice=${encodeURIComponent(voice)}`;
+      const r = await fetch(url);
+      const data = await r.json();
+      if (!data?.ok) throw new Error(data?.error || "TTS error");
 
-      // 2) PeerConnection
-      const pc = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-      });
-      pcRef.current = pc;
-
-      // 3) Remote audio
-      const remote = new MediaStream();
-      remoteStreamRef.current = remote;
-
-      pc.ontrack = (ev) => {
-        for (const track of ev.streams[0].getTracks()) {
-          remote.addTrack(track);
-        }
-        if (audioRef.current) {
-          audioRef.current.srcObject = remote;
-          // autoplay puede bloquearse; el click del botón ayuda
-          audioRef.current.play().catch(() => {});
-        }
-      };
-
-      // 4) Añadir micro al PC
-      for (const track of local.getTracks()) {
-        pc.addTrack(track, local);
-      }
-
-      // 5) Crear OFFER SDP
-      const offer = await pc.createOffer({
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: false,
-      });
-      await pc.setLocalDescription(offer);
-
-      const offerSdp = pc.localDescription?.sdp || "";
-      if (!offerSdp.trim()) throw new Error("Offer SDP vacío (frontend)");
-
-      // 6) Enviar SDP a tu Lambda → recibir ANSWER SDP
-      const resp = await fetch(`${LAMBDA_BASE}/realtime/session`, {
-        method: "POST",
-        headers: { "Content-Type": "application/sdp" },
-        body: offerSdp,
-      });
-
-      const answerSdp = await resp.text();
-      if (!resp.ok) {
-        throw new Error(`Lambda /realtime/session ${resp.status}: ${answerSdp}`);
-      }
-      if (!answerSdp.trim()) throw new Error("Answer SDP vacío (backend)");
-
-      // 7) Set remote description
-      await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
-
-      setRtStatus("live");
+      const audio = new Audio(`data:audio/mpeg;base64,${data.audioBase64}`);
+      await audio.play();
     } catch (e: any) {
-      setRtStatus("error");
-      setRtError(String(e?.message || e));
-      // limpieza
-      await stopRealtimeVoice();
-    }
-  }
-
-  async function stopRealtimeVoice() {
-    if (rtStatus === "stopping") return;
-    setRtStatus("stopping");
-
-    try {
-      if (pcRef.current) {
-        pcRef.current.ontrack = null;
-        pcRef.current.close();
-      }
-      pcRef.current = null;
-
-      safeStopTracks(localStreamRef.current);
-      localStreamRef.current = null;
-
-      if (audioRef.current) {
-        audioRef.current.pause();
-        // @ts-ignore
-        audioRef.current.srcObject = null;
-      }
-
-      remoteStreamRef.current = null;
-
-      setRtStatus("idle");
-    } catch {
-      setRtStatus("idle");
+      alert(`Error TTS: ${String(e?.message || e)}`);
     }
   }
 
@@ -176,7 +105,7 @@ export default function AuroraPage() {
       }}
     >
       <div style={{ maxWidth: 980, margin: "0 auto" }}>
-        <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 10 }}>
           <h1 style={{ margin: 0 }}>Aurora</h1>
           <Link
             href="/"
@@ -193,7 +122,47 @@ export default function AuroraPage() {
           </Link>
         </div>
 
-        {/* Chat box */}
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+            alignItems: "center",
+            marginBottom: 12,
+            opacity: 0.95,
+          }}
+        >
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={{ fontSize: 12, opacity: 0.9 }}>Modo:</div>
+            <select
+              value={persona}
+              onChange={(e) => setPersona(e.target.value)}
+              style={{ padding: 8, borderRadius: 10, border: "none", outline: "none" }}
+            >
+              {PERSONAS.map((p) => (
+                <option key={p.key} value={p.key}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={{ fontSize: 12, opacity: 0.9 }}>Voz:</div>
+            <select
+              value={voice}
+              onChange={(e) => setVoice(e.target.value)}
+              style={{ padding: 8, borderRadius: 10, border: "none", outline: "none" }}
+            >
+              {VOICES.map((v) => (
+                <option key={v.key} value={v.key}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         <div
           style={{
             background: "rgba(255,255,255,0.08)",
@@ -221,26 +190,19 @@ export default function AuroraPage() {
           </div>
         </div>
 
-        {/* Inputs */}
-        <div style={{ display: "flex", gap: 10, marginTop: 14, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Escribe aquí..."
             onKeyDown={(e) => {
-              if (e.key === "Enter") sendChat();
+              if (e.key === "Enter") send();
             }}
-            style={{
-              flex: 1,
-              padding: 12,
-              borderRadius: 12,
-              border: "none",
-              outline: "none",
-            }}
+            style={{ flex: 1, padding: 12, borderRadius: 12, border: "none", outline: "none" }}
           />
 
           <button
-            onClick={sendChat}
+            onClick={send}
             disabled={!canSend}
             style={{
               padding: "12px 16px",
@@ -251,48 +213,25 @@ export default function AuroraPage() {
               cursor: canSend ? "pointer" : "not-allowed",
             }}
           >
-            {loadingChat ? "..." : "Enviar"}
+            {loading ? "..." : "Enviar"}
           </button>
 
           <button
-            onClick={rtStatus === "live" ? stopRealtimeVoice : startRealtimeVoice}
+            onClick={speakLastAssistant}
             style={{
               padding: "12px 16px",
               borderRadius: 12,
               border: "none",
-              background: rtStatus === "live" ? "rgba(0,0,0,0.45)" : "rgba(255,255,255,0.12)",
+              background: "rgba(255,255,255,0.12)",
               color: "white",
               cursor: "pointer",
-              minWidth: 160,
             }}
           >
-            {rtStatus === "live"
-              ? "🛑 Parar voz"
-              : rtStatus === "starting"
-              ? "🎙️ Conectando..."
-              : "🎙️ Voz streaming"}
+            🔊 Voz
           </button>
         </div>
 
-        {/* Hidden audio output */}
-        <audio ref={audioRef} autoPlay />
-
-        {/* Status */}
-        <div style={{ marginTop: 10, opacity: 0.9, fontSize: 12, lineHeight: 1.4 }}>
-          Backend: {LAMBDA_BASE}
-          <br />
-          Voz:{" "}
-          {rtStatus === "idle"
-            ? "apagada"
-            : rtStatus === "starting"
-            ? "conectando..."
-            : rtStatus === "live"
-            ? "ACTIVA (deberías oír respuesta)"
-            : rtStatus === "stopping"
-            ? "parando..."
-            : "error"}
-          {rtError ? <div style={{ marginTop: 6 }}>❌ {rtError}</div> : null}
-        </div>
+        <div style={{ marginTop: 10, opacity: 0.85, fontSize: 12 }}>Backend: {LAMBDA_BASE}</div>
       </div>
     </main>
   );
