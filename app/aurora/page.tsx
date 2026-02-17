@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 
 type Role = "user" | "assistant";
@@ -8,70 +8,21 @@ type Msg = { role: Role; text: string };
 
 const LAMBDA_BASE =
   "https://lpaaocstqbrsx23qspv222ippa0zlptl.lambda-url.eu-north-1.on.aws";
-const STORAGE_KEY = "qnc_aurora_msgs_v1";
-
-function isRole(x: any): x is Role {
-  return x === "user" || x === "assistant";
-}
-
-function normalizeMsgs(input: any): Msg[] {
-  if (!Array.isArray(input)) return [];
-  const out: Msg[] = [];
-  for (const m of input) {
-    if (!m) continue;
-    const role = (m as any).role;
-    const text = (m as any).text;
-    if (isRole(role) && typeof text === "string") out.push({ role, text });
-  }
-  return out;
-}
 
 export default function AuroraChatPage() {
-  const [input, setInput] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(false);
-  const [ttsOn, setTtsOn] = useState<boolean>(false);
-
-  // ✅ Clave: el estado queda SIEMPRE tipado como Msg[]
-  const [msgs, setMsgs] = useState<Msg[]>(
-    [
-      {
-        role: "assistant",
-        text: "Hola Álvaro. Soy Aurora. Estoy lista. ¿Qué hacemos ahora?",
-      },
-    ] as Msg[]
-  );
-
-  // Cargar memoria local (si existe)
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      const normalized: Msg[] = normalizeMsgs(parsed);
-      if (normalized.length > 0) setMsgs(normalized.slice(-50));
-    } catch {}
-  }, []);
-
-  // Guardar memoria local
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs.slice(-50)));
-    } catch {}
-  }, [msgs]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [msgs, setMsgs] = useState<Msg[]>([
+    {
+      role: "assistant",
+      text: "Hola Álvaro. Soy Aurora. Dime algo y te respondo desde Lambda.",
+    },
+  ]);
 
   const canSend = useMemo(
     () => input.trim().length > 0 && !loading,
     [input, loading]
   );
-
-  async function speak(text: string) {
-    const r = await fetch(`${LAMBDA_BASE}/tts?text=${encodeURIComponent(text)}`);
-    const data = await r.json();
-    if (!data?.ok) throw new Error(data?.error || "TTS error");
-
-    const audio = new Audio(`data:audio/mpeg;base64,${data.audioBase64}`);
-    await audio.play();
-  }
 
   async function send() {
     const text = input.trim();
@@ -80,41 +31,25 @@ export default function AuroraChatPage() {
     setInput("");
     setLoading(true);
 
-    // ✅ MUY IMPORTANTE: usamos setMsgs(prev => ...) para que prev sea Msg[] SIEMPRE
-    let payload: Msg[] = [];
-    setMsgs((prev) => {
-      const next: Msg[] = [...prev, { role: "user", text }].slice(-20);
-      payload = next;
-      return next;
-    });
+    setMsgs((prev) => [...prev, { role: "user" as const, text }].slice(-20));
 
     try {
-      const r = await fetch(`${LAMBDA_BASE}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: payload }),
-      });
-
+      const r = await fetch(
+        `${LAMBDA_BASE}/chat?msg=${encodeURIComponent(text)}`
+      );
       const data = await r.json();
+
       if (!data?.ok) throw new Error(data?.error || "Chat error");
 
       const reply = String(data.reply || "");
-
-      setMsgs((prev) => {
-        const next: Msg[] = [...prev, { role: "assistant", text: reply }].slice(
-          -50
-        );
-        return next;
-      });
-
-      if (ttsOn && reply) {
-        try {
-          await speak(reply);
-        } catch {}
-      }
+      setMsgs((prev) =>
+        [...prev, { role: "assistant" as const, text: reply }].slice(-20)
+      );
     } catch (e: any) {
-      const err = `❌ Error: ${String(e?.message || e)}`;
-      setMsgs((prev) => [...prev, { role: "assistant", text: err }]);
+      const errText = `❌ Error: ${String(e?.message || e)}`;
+      setMsgs((prev) =>
+        [...prev, { role: "assistant" as const, text: errText }].slice(-20)
+      );
     } finally {
       setLoading(false);
     }
@@ -123,23 +58,19 @@ export default function AuroraChatPage() {
   async function speakLastAssistant() {
     const last = [...msgs].reverse().find((m) => m.role === "assistant")?.text;
     if (!last) return;
+
     try {
-      await speak(last);
+      const r = await fetch(
+        `${LAMBDA_BASE}/tts?text=${encodeURIComponent(last)}`
+      );
+      const data = await r.json();
+      if (!data?.ok) throw new Error(data?.error || "TTS error");
+
+      const audio = new Audio(`data:audio/mpeg;base64,${data.audioBase64}`);
+      await audio.play();
     } catch (e: any) {
       alert(`Error TTS: ${String(e?.message || e)}`);
     }
-  }
-
-  function resetMemory() {
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {}
-    setMsgs([
-      {
-        role: "assistant",
-        text: "Memoria borrada. Estoy lista otra vez. ¿Qué hacemos?",
-      },
-    ]);
   }
 
   return (
@@ -155,63 +86,19 @@ export default function AuroraChatPage() {
       <div style={{ maxWidth: 900, margin: "0 auto" }}>
         <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16 }}>
           <h1 style={{ margin: 0 }}>Aurora</h1>
-
-          <div style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
-            <button
-              onClick={() => setTtsOn((v) => !v)}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 10,
-                border: "none",
-                background: "rgba(255,255,255,0.12)",
-                color: "white",
-                cursor: "pointer",
-              }}
-            >
-              Voz: {ttsOn ? "encendida" : "apagada"}
-            </button>
-
-            <button
-              onClick={speakLastAssistant}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 10,
-                border: "none",
-                background: "rgba(255,255,255,0.12)",
-                color: "white",
-                cursor: "pointer",
-              }}
-            >
-              🔊 Repetir
-            </button>
-
-            <button
-              onClick={resetMemory}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 10,
-                border: "none",
-                background: "rgba(0,0,0,0.25)",
-                color: "white",
-                cursor: "pointer",
-              }}
-            >
-              🧠 Borrar memoria
-            </button>
-
-            <Link
-              href="/"
-              style={{
-                background: "rgba(255,255,255,0.12)",
-                padding: "10px 14px",
-                borderRadius: 10,
-                color: "white",
-                textDecoration: "none",
-              }}
-            >
-              Home
-            </Link>
-          </div>
+          <Link
+            href="/"
+            style={{
+              marginLeft: "auto",
+              background: "rgba(255,255,255,0.12)",
+              padding: "10px 14px",
+              borderRadius: 10,
+              color: "white",
+              textDecoration: "none",
+            }}
+          >
+            Volver a Home
+          </Link>
         </div>
 
         <div
@@ -229,7 +116,10 @@ export default function AuroraChatPage() {
                 style={{
                   alignSelf: m.role === "user" ? "flex-end" : "flex-start",
                   maxWidth: "80%",
-                  background: m.role === "user" ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.12)",
+                  background:
+                    m.role === "user"
+                      ? "rgba(0,0,0,0.25)"
+                      : "rgba(255,255,255,0.12)",
                   padding: "10px 12px",
                   borderRadius: 12,
                   whiteSpace: "pre-wrap",
@@ -270,6 +160,20 @@ export default function AuroraChatPage() {
             }}
           >
             {loading ? "..." : "Enviar"}
+          </button>
+
+          <button
+            onClick={speakLastAssistant}
+            style={{
+              padding: "12px 16px",
+              borderRadius: 12,
+              border: "none",
+              background: "rgba(255,255,255,0.12)",
+              color: "white",
+              cursor: "pointer",
+            }}
+          >
+            🔊 Voz
           </button>
         </div>
 
