@@ -8,7 +8,7 @@ type Msg = { role: "user" | "assistant"; text: string };
 const LAMBDA_BASE = "https://lpaaocstqbrsx23qspv222ippa0zlptl.lambda-url.eu-north-1.on.aws";
 
 const PERSONAS = [
-  { key: "female_es", label: "Femenina (Aurora)" },
+  { key: "female_es", label: "Aurora (Femenina)" },
   { key: "male_es", label: "Masculina" },
   { key: "neutral_es", label: "Neutra" },
   { key: "young_es", label: "Juvenil" },
@@ -32,7 +32,7 @@ export default function AuroraChatPage() {
   const [voice, setVoice] = useState("shimmer");
 
   const [msgs, setMsgs] = useState<Msg[]>([
-    { role: "assistant", text: "Hola Álvaro. Soy Aurora. Dime algo y te respondo con IA real." },
+    { role: "assistant", text: "Hola Álvaro. Soy Aurora. Estoy lista. Dime algo y te respondo." },
   ]);
 
   useEffect(() => {
@@ -65,11 +65,9 @@ export default function AuroraChatPage() {
       const url = `${LAMBDA_BASE}/chat?msg=${encodeURIComponent(text)}&persona=${encodeURIComponent(persona)}`;
       const r = await fetch(url);
       const data = await r.json();
+      if (!data?.ok) throw new Error(data?.details || data?.error || "Chat error");
 
-      if (!data?.ok) throw new Error(data?.error || "Chat error");
-
-      const reply = String(data.reply || "");
-      setMsgs((m) => [...m, { role: "assistant", text: reply }]);
+      setMsgs((m) => [...m, { role: "assistant", text: String(data.reply || "") }]);
     } catch (e: any) {
       setMsgs((m) => [...m, { role: "assistant", text: `❌ Error: ${String(e?.message || e)}` }]);
     } finally {
@@ -85,7 +83,7 @@ export default function AuroraChatPage() {
       const url = `${LAMBDA_BASE}/tts?text=${encodeURIComponent(last)}&voice=${encodeURIComponent(voice)}`;
       const r = await fetch(url);
       const data = await r.json();
-      if (!data?.ok) throw new Error(data?.error || "TTS error");
+      if (!data?.ok) throw new Error(data?.details || data?.error || "TTS error");
 
       const audio = new Audio(`data:audio/mpeg;base64,${data.audioBase64}`);
       await audio.play();
@@ -122,16 +120,7 @@ export default function AuroraChatPage() {
           </Link>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            flexWrap: "wrap",
-            alignItems: "center",
-            marginBottom: 12,
-            opacity: 0.95,
-          }}
-        >
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <div style={{ fontSize: 12, opacity: 0.9 }}>Modo:</div>
             <select
@@ -163,14 +152,7 @@ export default function AuroraChatPage() {
           </div>
         </div>
 
-        <div
-          style={{
-            background: "rgba(255,255,255,0.08)",
-            borderRadius: 14,
-            padding: 16,
-            minHeight: 420,
-          }}
-        >
+        <div style={{ background: "rgba(255,255,255,0.08)", borderRadius: 14, padding: 16, minHeight: 420 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {msgs.map((m, idx) => (
               <div
