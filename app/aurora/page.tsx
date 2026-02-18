@@ -9,20 +9,16 @@ type Msg = { role: Role; text: string };
 const LAMBDA_BASE =
   "https://lpaaocstqbrsx23qspv222ippa0zlptl.lambda-url.eu-north-1.on.aws";
 
+const USER_ID = "alvaro";
+
 export default function AuroraChatPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([
-    {
-      role: "assistant",
-      text: "Hola Álvaro. Soy Aurora. Dime algo y te respondo desde Lambda.",
-    },
+    { role: "assistant", text: "Hola Álvaro. Soy Aurora. Dime algo y te respondo desde Lambda." },
   ]);
 
-  const canSend = useMemo(
-    () => input.trim().length > 0 && !loading,
-    [input, loading]
-  );
+  const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
 
   async function send() {
     const text = input.trim();
@@ -31,25 +27,24 @@ export default function AuroraChatPage() {
     setInput("");
     setLoading(true);
 
-    setMsgs((prev) => [...prev, { role: "user" as const, text }].slice(-20));
+    setMsgs((prev) => [...prev, { role: "user", text }]);
 
     try {
-      const r = await fetch(
-        `${LAMBDA_BASE}/chat?msg=${encodeURIComponent(text)}`
-      );
+      const url = `${LAMBDA_BASE}/chat?user=${encodeURIComponent(USER_ID)}&msg=${encodeURIComponent(
+        text
+      )}`;
+      const r = await fetch(url);
       const data = await r.json();
 
       if (!data?.ok) throw new Error(data?.error || "Chat error");
 
       const reply = String(data.reply || "");
-      setMsgs((prev) =>
-        [...prev, { role: "assistant" as const, text: reply }].slice(-20)
-      );
+      setMsgs((prev) => [...prev, { role: "assistant", text: reply }]);
     } catch (e: any) {
-      const errText = `❌ Error: ${String(e?.message || e)}`;
-      setMsgs((prev) =>
-        [...prev, { role: "assistant" as const, text: errText }].slice(-20)
-      );
+      setMsgs((prev) => [
+        ...prev,
+        { role: "assistant", text: `❌ Error: ${String(e?.message || e)}` },
+      ]);
     } finally {
       setLoading(false);
     }
@@ -60,9 +55,7 @@ export default function AuroraChatPage() {
     if (!last) return;
 
     try {
-      const r = await fetch(
-        `${LAMBDA_BASE}/tts?text=${encodeURIComponent(last)}`
-      );
+      const r = await fetch(`${LAMBDA_BASE}/tts?text=${encodeURIComponent(last)}`);
       const data = await r.json();
       if (!data?.ok) throw new Error(data?.error || "TTS error");
 
@@ -116,10 +109,7 @@ export default function AuroraChatPage() {
                 style={{
                   alignSelf: m.role === "user" ? "flex-end" : "flex-start",
                   maxWidth: "80%",
-                  background:
-                    m.role === "user"
-                      ? "rgba(0,0,0,0.25)"
-                      : "rgba(255,255,255,0.12)",
+                  background: m.role === "user" ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.12)",
                   padding: "10px 12px",
                   borderRadius: 12,
                   whiteSpace: "pre-wrap",
