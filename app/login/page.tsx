@@ -23,47 +23,39 @@ export default function LoginPage() {
       >
         <h2>Acceso al Club</h2>
 
-        <input
-          placeholder="Email"
-          style={{
-            width: "100%",
-            padding: 10,
-            marginTop: 15,
-            borderRadius: 6,
-            border: "none",
-          }}
-        />
+        <p style={{ marginTop: 12, fontSize: 13, opacity: 0.9 }}>
+          Acceso seguro mediante Cognito (AWS).
+        </p>
 
-        <input
-          type="password"
-          placeholder="Contraseña"
+        {/* Botón REAL: manda a /app/login/start que redirige a Cognito */}
+        <a
+          href="/app/login/start"
           style={{
-            width: "100%",
-            padding: 10,
-            marginTop: 10,
-            borderRadius: 6,
-            border: "none",
-          }}
-        />
-
-        <button
-          style={{
+            display: "block",
             width: "100%",
             padding: 12,
-            marginTop: 20,
+            marginTop: 18,
             borderRadius: 8,
             border: "none",
             background: "#7c3aed",
             color: "white",
             fontWeight: "bold",
             cursor: "pointer",
+            textDecoration: "none",
           }}
         >
           Entrar
-        </button>
+        </a>
 
-        <p style={{ marginTop: 20, fontSize: 13 }}>
-          ¿No tienes cuenta? <a href="/register" style={{ color: "#ddd" }}>Regístrate</a>
+        <p style={{ marginTop: 18, fontSize: 13 }}>
+          ¿No tienes cuenta?{" "}
+          <a href="/register" style={{ color: "#ddd" }}>
+            Regístrate
+          </a>
+        </p>
+
+        <p style={{ marginTop: 10, fontSize: 11, opacity: 0.7 }}>
+          Si vienes de cerrar sesión, esta página existe para evitar errores 404.
         </p>
       </div>
     </main>
