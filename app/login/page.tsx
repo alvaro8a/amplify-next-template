@@ -1,4 +1,32 @@
+"use client";
+
+import { useState } from "react";
+
 export default function LoginPage() {
+  const [loading, setLoading] = useState(false);
+
+  function goLogin() {
+    setLoading(true);
+
+    const clientId = "35o8q5lh3pl7hulf3svch8jk7v";
+    const domain =
+      "https://quantum-nexus-login.auth.eu-north-1.amazoncognito.com";
+    const redirect =
+      "https://main.dkjwy846paczl.amplifyapp.com/auth/callback";
+
+    const url =
+      domain +
+      "/oauth2/authorize" +
+      "?client_id=" +
+      clientId +
+      "&response_type=code" +
+      "&scope=email+openid+phone" +
+      "&redirect_uri=" +
+      encodeURIComponent(redirect);
+
+    window.location.href = url;
+  }
+
   return (
     <main
       style={{
@@ -7,55 +35,44 @@ export default function LoginPage() {
         alignItems: "center",
         justifyContent: "center",
         background: "linear-gradient(to right, #6b46c1, #4c1d95)",
-        color: "white",
-        fontFamily: "Arial, sans-serif",
+        fontFamily: "Arial",
       }}
     >
       <div
         style={{
-          background: "rgba(255,255,255,0.08)",
+          background: "rgba(255,255,255,0.1)",
           padding: 40,
           borderRadius: 12,
-          width: 340,
+          width: 360,
           textAlign: "center",
-          backdropFilter: "blur(6px)",
+          color: "white",
         }}
       >
-        <h2>Acceso al Club</h2>
+        <h2>Acceso Quantum Nexus</h2>
 
-        <p style={{ marginTop: 12, fontSize: 13, opacity: 0.9 }}>
-          Acceso seguro mediante Cognito (AWS).
-        </p>
-
-        {/* Botón REAL: manda a /app/login/start que redirige a Cognito */}
-        <a
-          href="/app/login/start"
+        <button
+          onClick={goLogin}
+          disabled={loading}
           style={{
-            display: "block",
             width: "100%",
-            padding: 12,
-            marginTop: 18,
+            padding: 14,
+            marginTop: 25,
             borderRadius: 8,
             border: "none",
             background: "#7c3aed",
             color: "white",
             fontWeight: "bold",
             cursor: "pointer",
-            textDecoration: "none",
           }}
         >
-          Entrar
-        </a>
+          {loading ? "Conectando..." : "Entrar"}
+        </button>
 
-        <p style={{ marginTop: 18, fontSize: 13 }}>
+        <p style={{ marginTop: 20, fontSize: 13 }}>
           ¿No tienes cuenta?{" "}
           <a href="/register" style={{ color: "#ddd" }}>
-            Regístrate
+            Crear cuenta
           </a>
-        </p>
-
-        <p style={{ marginTop: 10, fontSize: 11, opacity: 0.7 }}>
-          Si vienes de cerrar sesión, esta página existe para evitar errores 404.
         </p>
       </div>
     </main>
