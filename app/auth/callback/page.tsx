@@ -47,11 +47,9 @@ export default function CallbackPage() {
           window.location.href = "/welcome";
         } else {
           setStatus("Error obteniendo token");
-          console.error(data);
         }
-      } catch (err) {
-        console.error(err);
-        setStatus("Error en login");
+      } catch (error) {
+        setStatus("Error procesando login");
       }
     }
 
@@ -59,17 +57,8 @@ export default function CallbackPage() {
   }, []);
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        display: "grid",
-        placeItems: "center",
-        fontFamily: "Arial",
-      }}
-    >
-      <div>
-        <h2>{status}</h2>
-      </div>
+    <main style={{ padding: 24, fontFamily: "Arial, sans-serif" }}>
+      <h1>{status}</h1>
     </main>
   );
 }
