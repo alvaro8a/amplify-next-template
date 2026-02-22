@@ -1,33 +1,42 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 export default function Callback() {
   const router = useRouter();
+  const params = useSearchParams();
 
   useEffect(() => {
-    const url = new URL(window.location.href);
-    const code = url.searchParams.get("code");
+    const code = params.get("code");
+    const error = params.get("error");
+    const errorDescription = params.get("error_description");
 
-    if (!code) {
-      console.error("❌ No authorization code received");
-      router.push("/app/login");
+    if (error) {
+      console.error("❌ Cognito error:", error, errorDescription);
+      router.replace("/?authError=1");
       return;
     }
 
-    // Guardamos el code temporalmente (luego lo cambiaremos por token real)
+    if (!code) {
+      console.error("❌ No authorization code received");
+      router.replace("/?noCode=1");
+      return;
+    }
+
+    console.log("✅ Authorization code received:", code);
+
+    // Guarda code (temporal)
     localStorage.setItem("cognito_code", code);
 
-    console.log("✅ Authorization code received");
-
-    // Redirige al panel (o login si aún no hay sesión)
-    router.push("/app/login");
-  }, [router]);
+    // ✅ IMPORTANTÍSIMO: NO VAYAS A /app/login (te da 404).
+    // Entra a una ruta que SÍ exista:
+    router.replace("/welcome");
+  }, [params, router]);
 
   return (
-    <div style={{padding:40,textAlign:"center"}}>
-      Conectando con Quantum Nexus...
+    <div style={{ padding: 40, textAlign: "center" }}>
+      Conectando con Quantum Nexus…
     </div>
   );
 }
