@@ -1,21 +1,67 @@
-export default function Register() {
+"use client";
+
+export default function RegisterPage() {
+  const clientId = "35o8q5lh3pl7hulf3svch8jk7v";
+  const domain = "https://quantum-nexus-login.auth.eu-north-1.amazoncognito.com";
+  const redirectUri = "https://main.d2hbx9fr1fvkud.amplifyapp.com/auth/callback";
+  const scope = "openid+email+phone";
+  const responseType = "code";
+
+  const signupUrl =
+    `${domain}/signup?client_id=${encodeURIComponent(clientId)}` +
+    `&response_type=${encodeURIComponent(responseType)}` +
+    `&scope=${scope}` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}`;
+
   return (
-    <main style={{ background: 'linear-gradient(to right, #6b46c1, #4c1d95)', color: 'white', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem' }}>
-      <h1 style={{ fontSize: '3rem', fontWeight: 'bold', marginBottom: '2rem' }}>Regístrate en el Quantum Nexus Club</h1>
-      <p style={{ fontSize: '1.5rem', textAlign: 'center', marginBottom: '2rem' }}>
-        Crea tu cuenta para acceder a superpoderes AI y empezar a ganar. ¡Solo 39€/mes!
-      </p>
-      <form style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '350px' }}>
-        <input type="text" placeholder="Tu nombre" style={{ padding: '1rem', borderRadius: '12px', border: 'none', fontSize: '1.1rem' }} required />
-        <input type="email" placeholder="Tu email" style={{ padding: '1rem', borderRadius: '12px', border: 'none', fontSize: '1.1rem' }} required />
-        <input type="password" placeholder="Contraseña" style={{ padding: '1rem', borderRadius: '12px', border: 'none', fontSize: '1.1rem' }} required />
-        <button type="submit" style={{ backgroundColor: '#7c3aed', color: 'white', padding: '1rem', borderRadius: '12px', border: 'none', fontWeight: 'bold', fontSize: '1.2rem', cursor: 'pointer' }}>
+    <main
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "linear-gradient(to right, #6b46c1, #4c1d95)",
+        color: "white",
+        fontFamily: "Arial, sans-serif",
+        padding: 20,
+      }}
+    >
+      <div
+        style={{
+          background: "rgba(255,255,255,0.08)",
+          padding: 40,
+          borderRadius: 12,
+          width: 360,
+          textAlign: "center",
+          backdropFilter: "blur(6px)",
+        }}
+      >
+        <h2>Crear cuenta</h2>
+
+        <button
+          onClick={() => (window.location.href = signupUrl)}
+          style={{
+            width: "100%",
+            padding: 12,
+            marginTop: 20,
+            borderRadius: 8,
+            border: "none",
+            background: "#7c3aed",
+            color: "white",
+            fontWeight: "bold",
+            cursor: "pointer",
+          }}
+        >
           Crear cuenta
         </button>
-      </form>
-      <p style={{ marginTop: '1.5rem', fontSize: '1.1rem' }}>
-        ¿Ya tienes cuenta? <a href="/login" style={{ color: '#c084fc', textDecoration: 'underline' }}>Inicia sesión</a>
-      </p>
+
+        <p style={{ marginTop: 20, fontSize: 13 }}>
+          ¿Ya tienes cuenta?{" "}
+          <a href="/login" style={{ color: "#ddd" }}>
+            Iniciar sesión
+          </a>
+        </p>
+      </div>
     </main>
   );
 }
