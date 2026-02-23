@@ -1,31 +1,17 @@
 "use client";
 
-import { useState } from "react";
-
 export default function LoginPage() {
-  const [loading, setLoading] = useState(false);
+  const clientId = "35o8q5lh3pl7hulf3svch8jk7v";
+  const domain = "https://quantum-nexus-login.auth.eu-north-1.amazoncognito.com";
+  const redirectUri = "https://main.d2hbx9fr1fvkud.amplifyapp.com/auth/callback";
+  const scope = "openid+email+phone";
+  const responseType = "code";
 
-  function goLogin() {
-    setLoading(true);
-
-    const clientId = "35o8q5lh3pl7hulf3svch8jk7v";
-    const domain =
-      "https://quantum-nexus-login.auth.eu-north-1.amazoncognito.com";
-    const redirect =
-      "https://main.dkjwy846paczl.amplifyapp.com/auth/callback";
-
-    const url =
-      domain +
-      "/oauth2/authorize" +
-      "?client_id=" +
-      clientId +
-      "&response_type=code" +
-      "&scope=email+openid+phone" +
-      "&redirect_uri=" +
-      encodeURIComponent(redirect);
-
-    window.location.href = url;
-  }
+  const loginUrl =
+    `${domain}/login?client_id=${encodeURIComponent(clientId)}` +
+    `&response_type=${encodeURIComponent(responseType)}` +
+    `&scope=${scope}` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}`;
 
   return (
     <main
@@ -35,28 +21,29 @@ export default function LoginPage() {
         alignItems: "center",
         justifyContent: "center",
         background: "linear-gradient(to right, #6b46c1, #4c1d95)",
-        fontFamily: "Arial",
+        color: "white",
+        fontFamily: "Arial, sans-serif",
+        padding: 20,
       }}
     >
       <div
         style={{
-          background: "rgba(255,255,255,0.1)",
+          background: "rgba(255,255,255,0.08)",
           padding: 40,
           borderRadius: 12,
           width: 360,
           textAlign: "center",
-          color: "white",
+          backdropFilter: "blur(6px)",
         }}
       >
-        <h2>Acceso Quantum Nexus</h2>
+        <h2>Acceso al Club</h2>
 
         <button
-          onClick={goLogin}
-          disabled={loading}
+          onClick={() => (window.location.href = loginUrl)}
           style={{
             width: "100%",
-            padding: 14,
-            marginTop: 25,
+            padding: 12,
+            marginTop: 20,
             borderRadius: 8,
             border: "none",
             background: "#7c3aed",
@@ -65,13 +52,13 @@ export default function LoginPage() {
             cursor: "pointer",
           }}
         >
-          {loading ? "Conectando..." : "Entrar"}
+          Entrar
         </button>
 
         <p style={{ marginTop: 20, fontSize: 13 }}>
           ¿No tienes cuenta?{" "}
           <a href="/register" style={{ color: "#ddd" }}>
-            Crear cuenta
+            Regístrate
           </a>
         </p>
       </div>
