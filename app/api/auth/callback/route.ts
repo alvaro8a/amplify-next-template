@@ -3,13 +3,8 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-function missingEnv() {
-  return {
-    COGNITO_DOMAIN: !process.env.COGNITO_DOMAIN,
-    COGNITO_CLIENT_ID: !process.env.COGNITO_CLIENT_ID,
-    COGNITO_REDIRECT_URI: !process.env.COGNITO_REDIRECT_URI,
-    COGNITO_CLIENT_SECRET: !process.env.COGNITO_CLIENT_SECRET,
-  };
+function bool(v: any) {
+  return v !== undefined && v !== null && String(v).trim() !== "";
 }
 
 export async function GET() {
@@ -17,43 +12,48 @@ export async function GET() {
     ok: true,
     route: "/api/auth/callback",
     seen: {
-      COGNITO_DOMAIN: Boolean(process.env.COGNITO_DOMAIN),
-      COGNITO_CLIENT_ID: Boolean(process.env.COGNITO_CLIENT_ID),
-      COGNITO_REDIRECT_URI: Boolean(process.env.COGNITO_REDIRECT_URI),
-      COGNITO_CLIENT_SECRET: Boolean(process.env.COGNITO_CLIENT_SECRET),
+      COGNITO_DOMAIN: bool(process.env.COGNITO_DOMAIN),
+      COGNITO_CLIENT_ID: bool(process.env.COGNITO_CLIENT_ID),
+      COGNITO_REDIRECT_URI: bool(process.env.COGNITO_REDIRECT_URI),
+      COGNITO_CLIENT_SECRET: bool(process.env.COGNITO_CLIENT_SECRET),
     },
   });
 }
 
 export async function POST(req: Request) {
   try {
-    const { code } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const code = typeof body?.code === "string" ? body.code.trim() : "";
 
     if (!code) {
-      return NextResponse.json({ error: "Missing code" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Missing code" }, { status: 400 });
     }
 
-    const missing = missingEnv();
-    if (
-      missing.COGNITO_DOMAIN ||
-      missing.COGNITO_CLIENT_ID ||
-      missing.COGNITO_REDIRECT_URI ||
-      missing.COGNITO_CLIENT_SECRET
-    ) {
-      return NextResponse.json({ error: "Missing env vars", missing }, { status: 500 });
+    const COGNITO_DOMAIN = (process.env.COGNITO_DOMAIN || "").trim();
+    const COGNITO_CLIENT_ID = (process.env.COGNITO_CLIENT_ID || "").trim();
+    const COGNITO_REDIRECT_URI = (process.env.COGNITO_REDIRECT_URI || "").trim();
+    const COGNITO_CLIENT_SECRET = (process.env.COGNITO_CLIENT_SECRET || "").trim();
+
+    const missing = {
+      COGNITO_DOMAIN: !COGNITO_DOMAIN,
+      COGNITO_CLIENT_ID: !COGNITO_CLIENT_ID,
+      COGNITO_REDIRECT_URI: !COGNITO_REDIRECT_URI,
+      COGNITO_CLIENT_SECRET: !COGNITO_CLIENT_SECRET,
+    };
+
+    if (missing.COGNITO_DOMAIN || missing.COGNITO_CLIENT_ID || missing.COGNITO_REDIRECT_URI || missing.COGNITO_CLIENT_SECRET) {
+      return NextResponse.json({ ok: false, error: "Missing env vars", missing }, { status: 500 });
     }
 
-    const tokenUrl = `${process.env.COGNITO_DOMAIN}/oauth2/token`;
+    const tokenUrl = `${COGNITO_DOMAIN.replace(/\/$/, "")}/oauth2/token`;
 
     const params = new URLSearchParams();
-    params.append("grant_type", "authorization_code");
-    params.append("client_id", process.env.COGNITO_CLIENT_ID as string);
-    params.append("redirect_uri", process.env.COGNITO_REDIRECT_URI as string);
-    params.append("code", code);
+    params.set("grant_type", "authorization_code");
+    params.set("client_id", COGNITO_CLIENT_ID);
+    params.set("redirect_uri", COGNITO_REDIRECT_URI);
+    params.set("code", code);
 
-    const basic = Buffer.from(
-      `${process.env.COGNITO_CLIENT_ID}:${process.env.COGNITO_CLIENT_SECRET}`
-    ).toString("base64");
+    const basic = Buffer.from(`${COGNITO_CLIENT_ID}:${COGNITO_CLIENT_SECRET}`).toString("base64");
 
     const res = await fetch(tokenUrl, {
       method: "POST",
@@ -64,60 +64,53 @@ export async function POST(req: Request) {
       body: params.toString(),
     });
 
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
-      return NextResponse.json({ error: "Token exchange failed", details: data }, { status: 500 });
+      return NextResponse.json({ ok: false, error: "Token exchange failed", details: data }, { status: 500 });
     }
 
-    const accessToken = String(data?.access_token || "");
-    const idToken = String(data?.id_token || "");
-    const refreshToken = String(data?.refresh_token || "");
-    const expiresIn = Number(data?.expires_in || 3600);
+    const accessToken = typeof data?.access_token === "string" ? data.access_token : "";
+    const idToken = typeof data?.id_token === "string" ? data.id_token : "";
+    const refreshToken = typeof data?.refresh_token === "string" ? data.refresh_token : "";
+    const expiresIn = Number.isFinite(Number(data?.expires_in)) ? Number(data.expires_in) : 3600;
 
     if (!accessToken || !idToken) {
-      return NextResponse.json(
-        { error: "Token exchange returned no tokens", details: data },
-        { status: 500 }
-      );
+      return NextResponse.json({ ok: false, error: "Missing tokens", details: data }, { status: 500 });
     }
 
-    const resp = NextResponse.json({ ok: true });
+    const r = NextResponse.json({ ok: true });
 
     const secure = true;
-    const sameSite: "lax" | "strict" | "none" = "lax";
 
-    resp.cookies.set("qn_access", accessToken, {
+    r.cookies.set("qn_access", accessToken, {
       httpOnly: true,
       secure,
-      sameSite,
+      sameSite: "lax",
       path: "/",
       maxAge: Math.max(60, expiresIn),
     });
 
-    resp.cookies.set("qn_id", idToken, {
+    r.cookies.set("qn_id", idToken, {
       httpOnly: true,
       secure,
-      sameSite,
+      sameSite: "lax",
       path: "/",
       maxAge: Math.max(60, expiresIn),
     });
 
     if (refreshToken) {
-      resp.cookies.set("qn_refresh", refreshToken, {
+      r.cookies.set("qn_refresh", refreshToken, {
         httpOnly: true,
         secure,
-        sameSite,
+        sameSite: "lax",
         path: "/",
         maxAge: 60 * 60 * 24 * 30,
       });
     }
 
-    return resp;
+    return r;
   } catch (e: any) {
-    return NextResponse.json(
-      { error: "Server error", details: String(e?.message || e) },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: "Server error", details: String(e?.message || e) }, { status: 500 });
   }
 }
